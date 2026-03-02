@@ -27,6 +27,7 @@ declare(strict_types=1);
 
 namespace mod_booking\external;
 
+use core_user;
 use external_api;
 use external_function_parameters;
 use external_value;
@@ -72,7 +73,16 @@ class allow_add_item_to_cart extends external_api {
             'userid' => $userid,
         ]);
 
-        // First check is if this makes sense at all. If we have no price, we return success right away.
+        // First, Check if the user is confirmed. If not, we do not allow to add the item to the cart.
+        $user = core_user::get_user($userid);
+        if (empty($user->confirmed)) {
+            return [
+                'success' => 0, /* LOCAL_SHOPPING_CART_CARTPARAM_SUCCESS needs to be hardcoded here as shopping cart might not be installed! */
+                'itemname' => '',
+            ];
+        }
+
+        // Check is if this makes sense at all. If we have no price, we return success right away.
         $settings = singleton_service::get_instance_of_booking_option_settings($params['itemid']);
         if (empty($settings->useprice)) {
             return [
