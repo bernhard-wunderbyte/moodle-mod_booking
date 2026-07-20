@@ -34,6 +34,7 @@ use core_form\dynamic_form;
 use Exception;
 use mod_booking\event\custom_bulk_message_sent;
 use mod_booking\event\custom_message_sent;
+use mod_booking\local\emailtemplates;
 use mod_booking\message_controller;
 use mod_booking\placeholders\placeholders_info;
 use mod_booking\singleton_service;
@@ -100,6 +101,32 @@ class modal_send_custom_message extends dynamic_form {
         $mform = $this->_form;
         $submitdata = $this->_ajaxformdata;
 
+        $cmid = (int) ($submitdata['cmid'] ?? 0);
+        $optionid = (int) ($submitdata['optionid'] ?? 0);
+
+        // Pressing the "Save template" no-submit button stores subject and message
+        // as an e-mail template right away - without sending any message. Handled
+        // before the template picker below is built, so the new template shows up
+        // there immediately. Access to this form was already checked in the
+        // constructor; the scope permissions are enforced via get_allowed_scopes.
+        $templatenotice = '';
+        if (!empty($submitdata['saveemailtemplate'])) {
+            $subject = trim(clean_param($submitdata['subject'] ?? '', PARAM_TEXT));
+            $messagetext = $submitdata['message']['text'] ?? '';
+            if ($subject !== '' && trim(strip_tags($messagetext)) !== '') {
+                $scope = $submitdata['emailtemplatescope'] ?? '';
+                if (!in_array($scope, emailtemplates::get_allowed_scopes($cmid), true)) {
+                    $scope = emailtemplates::SCOPE_OPTION;
+                }
+                emailtemplates::save($subject, $messagetext, $scope, $cmid, $optionid);
+                $templatenotice = '<div class="alert alert-success">'
+                    . get_string('emailtemplatesaved', 'mod_booking') . '</div>';
+            } else {
+                $templatenotice = '<div class="alert alert-warning">'
+                    . get_string('emailtemplatesavemissing', 'mod_booking') . '</div>';
+            }
+        }
+
         $mform->addElement('hidden', 'cmid', $submitdata['cmid'] ?? 0);
         $mform->setType('cmid', PARAM_INT);
 
@@ -129,6 +156,27 @@ class modal_send_custom_message extends dynamic_form {
         $placeholders = placeholders_info::return_list_of_placeholders();
         $mform->addElement('html', get_string('helptext:placeholders', 'mod_booking', $placeholders));
 
+        // Saved e-mail templates applicable here (option, instance and global scope),
+        // loaded into subject and message via no-submit form reload.
+        $templates = emailtemplates::get_templates($cmid, $optionid);
+        if (!empty($templates)) {
+            $templateoptions = [0 => get_string('choosedots')];
+            foreach ($templates as $template) {
+                $templateoptions[$template->id] = format_string($template->subject) .
+                    ' (' . emailtemplates::get_scope_label($template) . ')';
+            }
+            $loadgroup = [];
+            $loadgroup[] = $mform->createElement('select', 'emailtemplateid', '', $templateoptions);
+            $loadgroup[] = $mform->createElement(
+                'submit',
+                'loademailtemplate',
+                get_string('emailtemplateload', 'mod_booking')
+            );
+            $mform->addGroup($loadgroup, 'emailtemplategroup', get_string('emailtemplate', 'mod_booking'), [' '], false);
+            $mform->setType('emailtemplateid', PARAM_INT);
+            $mform->registerNoSubmitButton('loademailtemplate');
+        }
+
         $mform->addElement(
             'text',
             'subject',
@@ -142,6 +190,22 @@ class modal_send_custom_message extends dynamic_form {
         $mform->setType('message', PARAM_RAW);
         $mform->addRule('message', null, 'required', null, 'client');
 
+        // When the load button was pressed, fill subject and message from the chosen
+        // template. Constants override the submitted values in this reload request;
+        // the fields stay editable and the next request uses the user's input again.
+        if (
+            !empty($templates)
+            && !empty($submitdata['loademailtemplate'])
+            && !empty($submitdata['emailtemplateid'])
+        ) {
+            // The lookup in the fetched templates also makes sure the id belongs here.
+            $template = $templates[(int) $submitdata['emailtemplateid']] ?? null;
+            if ($template) {
+                $mform->setConstant('subject', $template->subject);
+                $mform->setConstant('message', ['text' => $template->message, 'format' => FORMAT_HTML]);
+            }
+        }
+
         $mform->addElement(
             'filepicker',
             'attachment',
@@ -150,6 +214,25 @@ class modal_send_custom_message extends dynamic_form {
             ['maxbytes' => get_max_upload_file_size(), 'accepted_types' => '*']
         );
         $mform->addHelpButton('attachment', 'custommessageattachment', 'mod_booking');
+
+        // Store subject and message as an e-mail template without sending a
+        // message (no-submit button, handled at the top of this method).
+        // Everyone who can open the modal may save option-level templates;
+        // instance scope requires mod/booking:customemailtemplates in the
+        // module context, global scope requires it in the system context.
+        $scopeoptions = [];
+        foreach (emailtemplates::get_allowed_scopes($cmid) as $allowedscope) {
+            $scopeoptions[$allowedscope] = get_string('emailtemplatescope' . $allowedscope, 'mod_booking');
+        }
+        $savegroup = [];
+        $savegroup[] = $mform->createElement('select', 'emailtemplatescope', '', $scopeoptions);
+        $savegroup[] = $mform->createElement('submit', 'saveemailtemplate', get_string('emailtemplatesavenow', 'mod_booking'));
+        $mform->addGroup($savegroup, 'emailtemplatesavegroup', get_string('emailtemplatesave', 'mod_booking'), [' '], false);
+        $mform->setType('emailtemplatescope', PARAM_ALPHA);
+        $mform->registerNoSubmitButton('saveemailtemplate');
+        if ($templatenotice !== '') {
+            $mform->addElement('html', $templatenotice);
+        }
     }
 
     /**

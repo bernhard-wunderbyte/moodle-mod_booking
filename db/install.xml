@@ -864,5 +864,24 @@
         <INDEX NAME="hashnameendx" UNIQUE="false" FIELDS="shortcodehash, endtime"/>
       </INDEXES>
     </TABLE>
+
+    <TABLE NAME="booking_emailtemplates" COMMENT="E-mail templates (subject and message) for the custom message modals. optionid set: template only for that booking option; optionid=0 and cmid set: for that booking instance; both 0: global template.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="subject" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="message" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="cmid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="optionid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="cmid" UNIQUE="false" FIELDS="cmid"/>
+        <INDEX NAME="optionid" UNIQUE="false" FIELDS="optionid"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>
